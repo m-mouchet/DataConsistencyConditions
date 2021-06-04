@@ -1,2 +1,3 @@
 Phantom
 { [ Cylinder_y: x=0 y=0 z=0 l=200 r=50 ] rho=1. }
+{ [ Cylinder_y: x=4 y=0 z=4 l=200 r=10 ] rho=2. }
