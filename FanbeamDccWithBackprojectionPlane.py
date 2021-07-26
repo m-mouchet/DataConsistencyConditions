@@ -22,11 +22,13 @@ def LinesMomentCorner(geometry0, geometry1, projection):
     sourceDir0 /= np.linalg.norm(sourceDir0)
     if (np.dot(sourceDir0, np.array([1., 0., 0.])) < 0):
               sourceDir0 *= -1
-    # z' direction
+#     # z' direction
     matRot0 = geometry0.GetRotationMatrix(0)
     matRot1 = geometry1.GetRotationMatrix(0)
     matRot0 = itk.GetArrayFromVnlMatrix(matRot0.GetVnlMatrix().as_matrix())
     matRot1 = itk.GetArrayFromVnlMatrix(matRot1.GetVnlMatrix().as_matrix())
+    print(matRot0)
+    print(matRot1)
     n0=matRot0[2, 0:3]
     n1=matRot1[2, 0:3]
     sourceDir2 = 0.5*(n0+n1)
@@ -100,8 +102,7 @@ def LinesMomentCorner(geometry0, geometry1, projection):
     # Find origin and opposite corner
     origin = np.array([np.min(corners[:,0]), np.max(corners[np.arange(4),1]),0.])
     otherCorner = np.array([np.max(corners[:,0]), np.min(corners[4+np.arange(4),1]),0.])
-    #print(origin,otherCorner)
-    
+
     # Create empty bp plane
     volDirection = volDirection.T.copy()
 #     volSpacing = np.array([(otherCorner[0]-origin[0])/(projection.GetLargestPossibleRegion().GetSize()[0]-1),
@@ -142,7 +143,7 @@ def LinesMomentCorner(geometry0, geometry1, projection):
     bp.Update()
     vol2 = bp.GetOutput()
     vol_ar = itk.GetArrayFromImage(vol2)
-    
+
 #     itk.imwrite(vol2, "vol_%d.mha" %(time.time()*1000))
 #     elapsed_time = time.time() - start_time
 #     print("BP computation time = %f"volSize[1//2] %(elapsed_time))
@@ -163,10 +164,11 @@ def LinesMomentCorner(geometry0, geometry1, projection):
     weight = weightFilter.GetOutput()
     #itk.imwrite(weightFilter.GetOutput(), "weights_%d.mha" %(time.time()*100))
     weightarray = itk.GetArrayFromImage(weight) #Make sure that the weighting is done
+    arfirst = np.copy(weightarray)
 #     elapsed_time = time.time() - start_time
 #     print("Weighting computation time = %f" %(elapsed_time))
 #     print(weightarray-vol_ar)
-    vk = np.linspace((-(volSize[1]+1)//2)*volSpacing[1],volSize[1]//2**volSpacing[1],volSize[1]) 
+    vk = np.linspace(origin[1]+volSpacing[1]/2,otherCorner[1]-volSpacing[1]/2,volSize[1]) - sourcePosWeight[1]
     Dvirt = sourcePosWeight[2]
     for i in range(volSize[1]):
         weightarray[0,i,:]/=np.sqrt(vk[i]**2+Dvirt**2)
@@ -185,4 +187,4 @@ def LinesMomentCorner(geometry0, geometry1, projection):
 #     elapsed_time_tot = time.time() - start_time_tot
 #     print("tot_time = %f" %(elapsed_time_tot))
     
-    return np.squeeze(vol.GetSpacing()[0]*np.sum(weightarray,axis=2)/(np.pi))
+    return np.squeeze(vol.GetSpacing()[0]*np.sum(weightarray,axis=2)/(np.pi)), volOrigin, volOtherCorner, volDirection, vk, arfirst, invMagSpacing, sourcePosWeight[1]

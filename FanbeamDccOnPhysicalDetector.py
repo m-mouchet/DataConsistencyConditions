@@ -2,6 +2,7 @@ import numpy as np
 import itk
 from itk import RTK as rtk
 from scipy import interpolate
+from math import *
 
 
 def ComputePlaneEquation(A, B, C):  # compute the cartesian equation of the plane formed by the three point ABC
@@ -64,15 +65,14 @@ def ComputeDetectorsPosition(geometry0, geometry1, projection0, projection1):  #
                 Det1[i, j, :] += coord1[0:3]
         theta = thetaTot[:,0]
     else:  # cylindrical detector
-        theta = (projection0.GetOrigin()[0] + np.arange(Nx)*projection0.GetSpacing()[0]*directionProj[0, 0])/Rd
+        theta = (projection0.GetOrigin()[0] + np.arange(Nx)*projection0.GetSpacing()[0]*directionProj[0, 0]+geometry0.GetProjectionOffsetsX()[0])/D
         for j in range(Ny):
-            Det0[:, j, 0] += (R_traj-Rd*np.cos(theta+geometry0.GetProjectionOffsetsX()[0]/D))*np.sin(a0+geometry0.GetSourceOffsetsX()[0]/R_traj) + Rd*np.sin(theta+geometry0.GetProjectionOffsetsX()[0]/D)*np.cos(a0 + geometry0.GetSourceOffsetsX()[0]/R_traj)  
+            Det0[:, j, 0] += (R_traj-Rd*np.cos(theta))*np.sin(a0+geometry0.GetSourceOffsetsX()[0]/R_traj) + Rd*np.sin(theta)*np.cos(a0 + geometry0.GetSourceOffsetsX()[0]/R_traj)  
             Det0[:, j, 1] += np.ones(Nx)*(projection0.GetOrigin()[1] + j*projection0.GetSpacing()[1]*directionProj[1, 1] + geometry0.GetProjectionOffsetsY()[0])
-            Det0[:, j, 2] += (R_traj-Rd*np.cos(theta+geometry0.GetProjectionOffsetsX()[0]/D))*np.cos(a0+ geometry0.GetSourceOffsetsX()[0]/R_traj) - Rd*np.sin(theta+geometry0.GetProjectionOffsetsX()[0]/D)*np.sin(a0+ geometry0.GetSourceOffsetsX()[0]/R_traj)
-            Det1[:, j, 0] = (R_traj-Rd*np.cos(theta+geometry1.GetProjectionOffsetsX()[0]/D))*np.sin(a1+ geometry1.GetSourceOffsetsX()[0]/R_traj) + Rd*np.sin(theta+geometry1.GetProjectionOffsetsX()[0]/D)*np.cos(a1+ geometry1.GetSourceOffsetsX()[0]/R_traj) 
-            Det1[:, j, 1] = np.ones(Nx)*(projection0.GetOrigin()[1] + j*projection0.GetSpacing()[1]*directionProj[1, 1] + geometry1.GetProjectionOffsetsY()[0])
-            Det1[:, j, 2] = (R_traj-Rd*np.cos(theta+geometry1.GetProjectionOffsetsX()[0]/D))*np.cos(a1+ geometry1.GetSourceOffsetsX()[0]/R_traj) - Rd*np.sin(theta+geometry1.GetProjectionOffsetsX()[0]/D)*np.sin(a1+ geometry1.GetSourceOffsetsX()[0]/R_traj)
-            
+            Det0[:, j, 2] += (R_traj-Rd*np.cos(theta))*np.cos(a0+ geometry0.GetSourceOffsetsX()[0]/R_traj) - Rd*np.sin(theta)*np.sin(a0+ geometry0.GetSourceOffsetsX()[0]/R_traj)
+            Det1[:, j, 0] = (R_traj-Rd*np.cos(theta))*np.sin(a1+ geometry1.GetSourceOffsetsX()[0]/R_traj) + Rd*np.sin(theta)*np.cos(a1+ geometry1.GetSourceOffsetsX()[0]/R_traj) 
+            Det1[:, j, 1] = np.ones(Nx)*(projection1.GetOrigin()[1] + j*projection1.GetSpacing()[1]*directionProj[1, 1] + geometry1.GetProjectionOffsetsY()[0])
+            Det1[:, j, 2] = (R_traj-Rd*np.cos(theta))*np.cos(a1+ geometry1.GetSourceOffsetsX()[0]/R_traj) - Rd*np.sin(theta)*np.sin(a1+ geometry1.GetSourceOffsetsX()[0]/R_traj)
     return Det0, Det1, theta
 
 
@@ -85,11 +85,13 @@ def ComputeCylindersIntersection(geometry0, geometry1):  # Compute the intersect
     
     mid_point = (s0+s1)/2
 
-    a = v_dir[0]**2+v_dir[1]**2
-    b = 2*(v_dir[0]*(mid_point[2]-s1[2]) + v_dir[1]*(mid_point[0]-s1[0]))
-    c = (mid_point[2]-s1[2])**2 + (mid_point[0]-s1[0])**2 - D**2
+#     a = v_dir[0]**2+v_dir[1]**2
+#     b = 2*(v_dir[0]*(mid_point[2]-s1[2]) + v_dir[1]*(mid_point[0]-s1[0]))
+#     c = (mid_point[2]-s1[2])**2 + (mid_point[0]-s1[0])**2 - D**2
+#     roots = np.array(np.roots([a, b, c]))
+    c = (s0[2]-s1[2])**2/4 + (s0[0]-s1[0])**2/4 - D**2
+    roots = np.array([-np.sqrt(np.abs(c)),np.sqrt(np.abs(c))])
 
-    roots = np.array(np.roots([a, b, c]))
     t1 = np.array([roots[0]*v_dir[1]+mid_point[0], 0, roots[0]*v_dir[0]+mid_point[2]])
     t2 = np.array([roots[1]*v_dir[1]+mid_point[0], 0, roots[1]*v_dir[0]+mid_point[2]])
 
@@ -128,13 +130,21 @@ def ComputeNewFrameAndMPoints(Nx, DeltaY, D0, D1, geometry0, geometry1):  # Comp
     # Axial coordinates
     y_min = np.max([D0[Nx//2, 0, 1], D1[Nx//2, 0, 1]])
     y_max = np.min([D0[Nx//2, -1, 1], D1[Nx//2, -1, 1]])
-    y_dcc = np.linspace(y_min, y_max, round(np.abs(y_max-y_min)/DeltaY))
+    y_dcc = np.linspace(y_min + DeltaY/2, y_max - DeltaY/2, floor(np.abs(y_max-y_min)/DeltaY))
+#     print(len(y_dcc),y_min, y_max, floor(np.abs(y_max-y_min)/DeltaY),np.abs(y_max-y_min)/DeltaY)
+    
     # Radial coordinates
-    t1, t2 = ComputeCylindersIntersection(geometry0, geometry1)
-    if np.dot(t1, volDir[2, :]) >= 0:
-        intersect = t1
+    ta, tb = ComputeCylindersIntersection(geometry0, geometry1)
+    dist0a = np.linalg.norm(np.array([ta[0],ta[2]])-np.array([D0[Nx//2,0,0],D0[Nx//2,0,2]]))
+    dist0b = np.linalg.norm(np.array([tb[0],tb[2]])-np.array([D0[Nx//2,0,0],D0[Nx//2,0,2]]))
+    dist1a = np.linalg.norm(np.array([ta[0],ta[2]])-np.array([D1[Nx//2,0,0],D1[Nx//2,0,2]]))
+    dist1b = np.linalg.norm(np.array([tb[0],tb[2]])-np.array([D1[Nx//2,0,0],D1[Nx//2,0,2]]))
+    if dist0a <= dist0b and dist1a <= dist1b:
+        intersect = ta
+#         print("ta")
     else:
-        intersect = t2
+        intersect = tb
+#         print("tb")
     PMs = np.array([intersect[0]*np.ones(len(y_dcc)), y_dcc, intersect[2]*np.ones(len(y_dcc))])
     return PMs
 
@@ -151,15 +161,18 @@ def CanWeApplyDirectlyTheFormula(angle, xs):  # Check if there is a singularity 
         else:
             return False
         
+
 def ComputeAllInOneFunction(a0, a1, sourcePos0, sourcePos1, M_points, gamma, v_det, D):
     b = sourcePos0[0:3] - sourcePos1[0:3]
     b /= np.linalg.norm(b)
-    if (np.dot(b, np.array([1., 0., 0.])) < 0):
-              b *= -1
+    if (np.dot(b, np.array([1., 0., 0.])) < 0) :
+        b *=-1
             
     n0 = []
     n1 = []
     M_ACC = []
+    
+    dv = np.abs(v_det[1]-v_det[0])
             
     volDir0 = np.vstack((np.array([np.cos(a0),0,-np.sin(a0)]),np.array([0,1,0]),np.array([np.sin(a0),0,np.cos(a0)])))
     b0 = np.dot(volDir0,b)
@@ -168,10 +181,17 @@ def ComputeAllInOneFunction(a0, a1, sourcePos0, sourcePos1, M_points, gamma, v_d
     
     for j in range(len(M_points[1])):
         n, d = ComputePlaneEquation(sourcePos0, sourcePos1, np.array([M_points[0][j], M_points[1][j], M_points[2][j]]))
+#         delta = (sourcePos0[2]-sourcePos1[2])**2/4 + (sourcePos0[0]-sourcePos1[0])**2/4 - D**2
+#         an1 = (sourcePos1[0]-sourcePos0[0])*(M_points[1][j]-sourcePos0[1])-(sourcePos1[1]-sourcePos0[1])*((sourcePos1[0]-sourcePos0[0])/2-np.sqrt(np.abs(delta))*(sourcePos1[2]-sourcePos0[2])/np.sqrt((sourcePos0[2]-sourcePos1[2])**2 + (sourcePos0[0]-sourcePos1[0])**2))
+#         an2 = (sourcePos1[1]-sourcePos0[1])*((sourcePos1[2]-sourcePos0[2])/2-np.sqrt(np.abs(delta))*(sourcePos0[0]-sourcePos1[0])/np.sqrt((sourcePos0[2]-sourcePos1[2])**2 + (sourcePos0[0]-sourcePos1[0])**2))-(sourcePos1[2]-sourcePos0[2])*(M_points[1][j]-sourcePos0[1])
+#         an3 = -np.sqrt(np.abs(delta))*np.sqrt((sourcePos0[2]-sourcePos1[2])**2 + (sourcePos0[0]-sourcePos1[0])**2)        
+#         an = np.array([an1,an2,an3])/np.linalg.norm(np.array([an1,an2,an3]))
+# #         print(an1,an2,an3)
         n_new0 = np.dot(volDir0,n)
         n_new1 = np.dot(volDir1,n)
         gamma_e0 = np.arctan(-n_new0[0]/n_new0[2])
         gamma_e1 = np.arctan(-n_new1[0]/n_new1[2])
+
         if CanWeApplyDirectlyTheFormula(gamma,gamma_e0):
             x0 = np.array([gamma[0],gamma[-1]])
         else:
@@ -183,16 +203,18 @@ def ComputeAllInOneFunction(a0, a1, sourcePos0, sourcePos1, M_points, gamma, v_d
             
         v0 = D*(-np.sin(x0)*n_new0[0]+np.cos(x0)*n_new0[2])/n_new0[1]
         v1 = D*(-np.sin(x1)*n_new1[0]+np.cos(x1)*n_new1[2])/n_new1[1]
-        c0_min  = (np.min(v_det) <= np.min(v0) and np.min(v0) <= np.max(v_det))
+
+        c0_min  = (np.min(v_det)  <= np.min(v0) and np.min(v0) <= np.max(v_det))
         c0_max = (np.min(v_det) <= np.max(v0) and np.max(v0) <= np.max(v_det))
         c1_min  = (np.min(v_det) <= np.min(v1) and np.min(v1) <= np.max(v_det))
         c1_max = (np.min(v_det) <= np.max(v1) and np.max(v1) <= np.max(v_det))
+
         if (c0_min and c0_max) and (c1_min and c1_max):
             M_ACC.append(np.array([M_points[0][j], M_points[1][j], M_points[2][j]]))
             n0.append(n_new0)
             n1.append(n_new1)
             
-    return np.array(M_ACC), np.array(n0), b0, np.array(n1), b1        
+    return np.array(M_ACC), np.array(n0), b0, np.array(n1), b1
   
 def ComputeAllDetectorPlanesIntersections(geometry0, geometry1, Det0, Det1, M_points, DeltaY):  # Compute and select the intersection curves between a pair of detectors and the different planes that are not truncated in the canonical frame
     sourcePos0, sourcePos1 = ExtractSourcePosition(geometry0, geometry1)
@@ -203,8 +225,8 @@ def ComputeAllDetectorPlanesIntersections(geometry0, geometry1, Det0, Det1, M_po
     z1 = Det1[:, 0, 2]
     Nx = Det0.shape[0]
 
-    Inter0 = []
-    Inter1 = []
+#     Inter0 = []
+#     Inter1 = []
     M_ACC = []
     Normals = []
 
@@ -212,16 +234,17 @@ def ComputeAllDetectorPlanesIntersections(geometry0, geometry1, Det0, Det1, M_po
         plane = ComputePlaneEquation(sourcePos0, sourcePos1, np.array([M_points[0][i], M_points[1][i], M_points[2][i]]))
         y0 = -(plane[0][0]*x0+plane[0][2]*z0+plane[1])/plane[0][1]
         y1 = -(plane[0][0]*x1+plane[0][2]*z1+plane[1])/plane[0][1]
-        c0m = (Nx == len(np.where(y0 >= np.min(Det0[0, :, 1]))[0]))
-        c0M = (Nx == len(np.where(y0 <= np.max(Det0[0, :, 1]))[0]))
-        c1m = (Nx == len(np.where(y1 >= np.min(Det1[0, :, 1]))[0]))
-        c1M = (Nx == len(np.where(y1 <= np.max(Det1[0, :, 1]))[0]))
+        c0m = (Nx == len(np.where(y0 > np.min(Det0[0, :, 1]))[0]))
+        c0M = (Nx == len(np.where(y0 < np.max(Det0[0, :, 1]))[0]))
+        c1m = (Nx == len(np.where(y1 > np.min(Det1[0, :, 1]))[0]))
+        c1M = (Nx == len(np.where(y1 < np.max(Det1[0, :, 1]))[0]))
         if (c0m and c0M) and (c1m and c1M):
-            Inter0.append(y0)
-            Inter1.append(y1)
+#             Inter0.append(y0)
+#             Inter1.append(y1)
             M_ACC.append(np.array([M_points[0][i], M_points[1][i], M_points[2][i]]))
             Normals.append(plane[0])
-    return x1, z1, np.array(Inter1), x0, z0, np.array(Inter0), np.array(M_ACC), np.array(Normals)
+#     return x1, z1, np.array(Inter1), x0, z0, np.array(Inter0), np.array(M_ACC), np.array(Normals)
+    return  np.array(M_ACC), np.array(Normals)
 
 def ChangeOfFrameForAll(a, Scenter, s0, s1, Det, x, z, y, D, M_ACC, xe):
     volDirection = np.vstack((np.array([np.cos(a),0,-np.sin(a)]),np.array([0,1,0]),np.array([np.sin(a),0,np.cos(a)])))
@@ -252,6 +275,7 @@ def ComputeMomentsOnCylindricalDetectors(geometry0, geometry1, projection0, proj
     a0, a1 = geometry0.GetGantryAngles()[0], geometry1.GetGantryAngles()[0]
     dx0, dx1 = geometry0.GetProjectionOffsetsX()[0], geometry1.GetProjectionOffsetsX()[0]
     sx0, sx1 = geometry0.GetSourceOffsetsX()[0], geometry1.GetSourceOffsetsX()[0]
+    sy0, sy1 = geometry0.GetSourceOffsetsY()[0], geometry1.GetSourceOffsetsY()[0]
     dy0, dy1 = geometry0.GetProjectionOffsetsY()[0], geometry1.GetProjectionOffsetsY()[0]
     projar0 = itk.GetArrayFromImage(projection0)
     projar1 = itk.GetArrayFromImage(projection1)
@@ -261,15 +285,19 @@ def ComputeMomentsOnCylindricalDetectors(geometry0, geometry1, projection0, proj
     [DeltaX, DeltaY, DeltaZ] = projection0.GetSpacing()
     [Nx, Ny, Nz] = projection0.GetLargestPossibleRegion().GetSize()
     
+    projIdxToCoord0 = geometry0.GetProjectionCoordinatesToFixedSystemMatrix(0)
+    projIdxToCoord0 = itk.GetArrayFromVnlMatrix(projIdxToCoord0.GetVnlMatrix().as_matrix())
+    directionProj = itk.GetArrayFromMatrix(projection0.GetDirection())
+    
     # Compute the two detectors coordinates RTK angles
     Det0, Det1, gamma_RTK = ComputeDetectorsPosition(geometry0, geometry1, projection0, projection1)
     
     # Compute intersection between the two detectors and all possible M points
     PMs = ComputeNewFrameAndMPoints(Nx, DeltaY, Det0, Det1, geometry0, geometry1)
 
-    v_det = projection0.GetOrigin()[1] + np.arange(Ny)*projection0.GetSpacing()[1]
+    v_det =  projection0.GetOrigin()[1] + dy0-sy0+ (np.arange(Ny)*projection0.GetSpacing()[1])*directionProj[1, 1] 
     M_ACC, n0, b0, n1, b1 = ComputeAllInOneFunction(a0, a1, sourcePos0, sourcePos1, PMs, gamma_RTK, v_det, D)
-
+    
     # Computation of the projection weights
     new_cos0 = np.zeros((Det0.shape[0], n0.shape[0]))
     new_cos1 = np.zeros((Det1.shape[0], n1.shape[0]))
@@ -290,13 +318,14 @@ def ComputeMomentsOnCylindricalDetectors(geometry0, geometry1, projection0, proj
 
     m0 = np.sum(proj_interp0/new_cos0, axis=0)*np.abs(gamma_RTK[1]-gamma_RTK[0])
     m1 = np.sum(proj_interp1/new_cos1, axis=0)*np.abs(gamma_RTK[1]-gamma_RTK[0])
-
+    
     return m0, m1
 
 def ComputeMomentsOnCylindricalDetectorsWithSingularity(geometry0, geometry1, projection0, projection1):
     a0, a1 = geometry0.GetGantryAngles()[0], geometry1.GetGantryAngles()[0]
     dx0, dx1 = geometry0.GetProjectionOffsetsX()[0], geometry1.GetProjectionOffsetsX()[0]
     sx0, sx1 = geometry0.GetSourceOffsetsX()[0], geometry1.GetSourceOffsetsX()[0]
+    sy0, sy1 = geometry0.GetSourceOffsetsY()[0], geometry1.GetSourceOffsetsY()[0]
     dy0, dy1 = geometry0.GetProjectionOffsetsY()[0], geometry1.GetProjectionOffsetsY()[0]
     projar0 = itk.GetArrayFromImage(projection0)
     projar1 = itk.GetArrayFromImage(projection1)
@@ -305,31 +334,33 @@ def ComputeMomentsOnCylindricalDetectorsWithSingularity(geometry0, geometry1, pr
     R = geometry0.GetSourceToIsocenterDistances()[0]
     [DeltaX, DeltaY, DeltaZ] = projection0.GetSpacing()
     [Nx, Ny, Nz] = projection0.GetLargestPossibleRegion().GetSize()
-
+    
+    directionProj = itk.GetArrayFromMatrix(projection0.GetDirection())
+    
     # Compute the two detectors coordinates RTK angles
     Det0, Det1, gamma_RTK = ComputeDetectorsPosition(geometry0, geometry1, projection0, projection1)
 
     # Compute intersection between the two detectors and all possible M points
     PMs = ComputeNewFrameAndMPoints(Nx, DeltaY, Det0, Det1, geometry0, geometry1)
-    v_det = projection0.GetOrigin()[1] + np.arange(Ny)*projection0.GetSpacing()[1]
+
+    v_det =  projection0.GetOrigin()[1] + dy0-sy0 + (np.arange(Ny)*projection0.GetSpacing()[1])*directionProj[1, 1] 
     M_ACC, n0, b0, n1, b1 = ComputeAllInOneFunction(a0, a1, sourcePos0, sourcePos1, PMs, gamma_RTK, v_det, D)
+
     
     # Axial interpolation of the projection at the different intersection points of the curve
     proj_interp0 = np.zeros((Det0.shape[0], n0.shape[0]))
     proj_interp1 = np.zeros((Det1.shape[0], n1.shape[0]))
     v0 = np.zeros((Det0.shape[0], n0.shape[0]))
     v1 = np.zeros((Det1.shape[0], n1.shape[0]))
-    v_det = projection0.GetOrigin()[1] + np.arange(Ny)*projection0.GetSpacing()[1]
     for i in range(Det0.shape[0]):  
         v0[i,:] = (-n0[:,0]*D*np.sin(gamma_RTK[i])+n0[:,2]*D*np.cos(gamma_RTK[i]))/n0[:,1]
         v1[i,:] = (-n1[:,0]*D*np.sin(gamma_RTK[i])+n1[:,2]*D*np.cos(gamma_RTK[i]))/n1[:,1]
         proj_interp0[i,:] += np.interp(v0[i,:],v_det,projar0[0, :, i])
         proj_interp1[i,:] += np.interp(v1[i,:],v_det,projar1[0, :, i])
-        
-
+          
     m0_trpz, m1_trpz = np.zeros(v0.shape[1]), np.zeros(v1.shape[1])
-    sing0, sing1 = np.zeros(v0.shape[1]), np.zeros(v1.shape[1])
-    rest0, rest1 = np.zeros(v0.shape[1]), np.zeros(v1.shape[1])
+    norm0, norm1 = np.zeros(v0.shape[1]), np.zeros(v1.shape[1])
+    grad0, grad1 = np.zeros(v0.shape[1]), np.zeros(v1.shape[1])
     
     da = np.abs(a1-a0)
     
@@ -337,17 +368,16 @@ def ComputeMomentsOnCylindricalDetectorsWithSingularity(geometry0, geometry1, pr
         xs0 = np.arctan(-b0[0]/b0[2])
         if CanWeApplyDirectlyTheFormula(gamma_RTK, xs0):
             new_cos0 = np.sqrt(D**2+v0[:,j]**2)*(np.cos(gamma_RTK)*b0[0]+np.sin(gamma_RTK)*b0[2])/D
-            m0_trpz[j],sing0[j],rest0[j] = np.abs(gamma_RTK[1]-gamma_RTK[0])*np.sum(proj_interp0[:, j]/new_cos0),0,0
+            m0_trpz[j], norm0[j], grad0[j] = np.abs(gamma_RTK[1]-gamma_RTK[0])*np.sum(proj_interp0[:, j]/new_cos0), np.abs(np.abs(gamma_RTK[1]-gamma_RTK[0])*np.sum(proj_interp0[:, j]/new_cos0)),0
         else:
-            m0_trpz[j],sing0[j],rest0[j] = TrapIntegration(da, xs0, gamma_RTK, proj_interp0[:, j], v0[:,j], b0, D)
-            
+            m0_trpz[j], norm0[j], grad0[j] = TrapIntegration(da, xs0, gamma_RTK, proj_interp0[:, j], v0[:,j], b0, D)
         xs1 = np.arctan(-b1[0]/b1[2])
         if CanWeApplyDirectlyTheFormula(gamma_RTK, xs1):
             new_cos1 = np.sqrt(D**2+v1[:,j]**2)*(np.cos(gamma_RTK)*b1[0]+np.sin(gamma_RTK)*b1[2])/D
-            m1_trpz[j],sing1[j],rest1[j] = np.abs(gamma_RTK[1]-gamma_RTK[0])*np.sum(proj_interp1[:, j]/new_cos1),0,0
+            m1_trpz[j], norm1[j], grad1[j] = np.abs(gamma_RTK[1]-gamma_RTK[0])*np.sum(proj_interp1[:, j]/new_cos1), np.abs(np.abs(gamma_RTK[1]-gamma_RTK[0])*np.sum(proj_interp1[:, j]/new_cos1)),0
         else:
-            m1_trpz[j],sing1[j],rest1[j] = TrapIntegration(da, xs1, gamma_RTK, proj_interp1[:, j], v1[:,j], b1, D)
-    return m0_trpz, m1_trpz, sing0, sing1, rest0, rest1
+            m1_trpz[j], norm1[j], grad1[j] = TrapIntegration(da, xs1, gamma_RTK, proj_interp1[:, j], v1[:,j], b1, D)
+    return m0_trpz, m1_trpz, norm0, norm1, grad0, grad1
 
 
 def TestForSingularity(angle, xs):  #Find the indices of the angles surrounding the singularity
@@ -366,21 +396,107 @@ def TrapIntegration(da, xs, gamma, ar, v, xe, D):  #Perform numerical integratio
     h = np.abs(gamma[1]-gamma[0])
     g = D*ar/(np.sqrt(D**2+v**2)*(np.cos(gamma)*xe[0]+np.sin(gamma)*xe[2]))
     ii, iii = TestForSingularity(gamma, xs)
-
-    summ = h*(np.sum(g[1:-1])+(g[0]+g[-1])/2-(g[ii]+g[iii])/2)
-    
-    sing = 0
-
     f_lin = D * ar / np.sqrt(D**2+v**2)
-    a = (f_lin[iii]-f_lin[ii])/(gamma[iii]-gamma[ii])
-    b = f_lin[iii]-a*gamma[iii]
-    c = ((np.cos(gamma[iii])*xe[0]+np.sin(gamma[iii])*xe[2])-(np.cos(gamma[ii])*xe[0]+np.sin(gamma[ii])*xe[2]))/(gamma[iii]-gamma[ii])
-    d = (np.cos(gamma[iii])*xe[0]+np.sin(gamma[iii])*xe[2]) - c*gamma[iii]
-    rest_ii = (a*(c*gamma[ii]+d)+(b*c-a*d)*np.log(np.abs(c*gamma[ii]+d)))
-    rest_iii = (a*(c*gamma[iii]+d)+(b*c-a*d)*np.log(np.abs(c*gamma[iii]+d)))
-    rest = (rest_iii-rest_ii)/c**2
+    f_int = interpolate.interp1d(gamma,f_lin)
+#     print(gamma[1]-gamma[0])
+
+    grad = (f_int(xs+h/2)-f_int(xs-h/2))/h
     
-    return summ+rest+sing, sing, rest
+    if np.abs(gamma[ii]-xs)<np.abs(gamma[iii]-xs):
+        summ = np.trapz(g[0:ii],gamma[0:ii],gamma[1]-gamma[0])+np.trapz(g[iii:],gamma[iii:],gamma[1]-gamma[0])
+#         summ = integrate.simps(g[0:ii],gamma[0:ii],gamma[1]-gamma[0]) + integrate.simps(g[iii:],gamma[iii:],gamma[1]-gamma[0])
+#         summ = GaussIntegration(f_int,gamma[0],gamma[ii-1],50) + GaussIntegration(f_int,gamma[iii],gamma[-1],50)
+        a = (f_lin[iii]-f_lin[ii-1])/(gamma[iii]-gamma[ii-1])
+        b = f_lin[iii]-a*gamma[iii]
+        c = ((np.cos(gamma[iii])*xe[0]+np.sin(gamma[iii])*xe[2])-(np.cos(gamma[ii-1])*xe[0]+np.sin(gamma[ii-1])*xe[2]))/(gamma[iii]-gamma[ii-1])
+        d = (np.cos(gamma[iii])*xe[0]+np.sin(gamma[iii])*xe[2]) - c*gamma[iii]
+        rest_ii = (a*(c*gamma[ii-1]+d)+(b*c-a*d)*np.log(np.abs(c*gamma[ii-1]+d)))
+        rest_iii = (a*(c*gamma[iii]+d)+(b*c-a*d)*np.log(np.abs(c*gamma[iii]+d)))
+        rest = (rest_iii-rest_ii)/c**2
+        norm = np.abs(np.trapz(g[0:ii],gamma[0:ii],gamma[1]-gamma[0]))+np.abs(np.trapz(g[iii:],gamma[iii:],gamma[1]-gamma[0])) + np.abs(rest)
+        
+#         plt.figure()
+#         plt.subplot(231)
+#         plt.plot(gamma,f_lin)
+#         plt.plot(gamma[ii-1:iii+1],a*gamma[ii-1:iii+1]+b,'k--')
+#         plt.axvline(x=xs,color='red',linewidth=0.5)
+#         plt.subplot(232)
+#         plt.plot(gamma,np.cos(gamma)*xe[0]+np.sin(gamma)*xe[2])
+#         plt.plot(gamma[ii-1:iii+1],c*gamma[ii-1:iii+1]+d,'k--')
+#         plt.axvline(x=xs,color='red',linewidth=0.5)
+#         plt.subplot(233)
+#         plt.plot(gamma,g)
+#         plt.plot(gamma,np.abs(g))
+#         plt.plot(gamma[ii-1:iii+1],(a*gamma[ii-1:iii+1]+b)/(c*gamma[ii-1:iii+1]+d),'k--')
+#         plt.plot(gamma[ii],g[ii],'.')
+#         plt.plot(gamma[iii],g[iii],'.')
+#         plt.axvline(x=xs,color='red',linewidth=0.5)
+#         plt.subplot(234)
+#         plt.plot(gamma[ii-1:iii+1],f_lin[ii-1:iii+1])
+#         plt.plot(gamma[ii-1:iii+1],a*gamma[ii-1:iii+1]+b,'k--')
+#         plt.axvline(x=xs,color='red',linewidth=0.5)
+#         plt.subplot(235)
+#         plt.plot(gamma[ii-1:iii+1],np.cos(gamma[ii-1:iii+1])*xe[0]+np.sin(gamma[ii-1:iii+1])*xe[2])
+#         plt.plot(gamma[ii-1:iii+1],c*gamma[ii-1:iii+1]+d,'k--')
+#         plt.axvline(x=xs,color='red',linewidth=0.5)
+#         plt.subplot(236)
+#         plt.plot(gamma[ii-1:iii+1],g[ii-1:iii+1])
+#         plt.plot(gamma[ii-1:iii+1],(a*gamma[ii-1:iii+1]+b)/(c*gamma[ii-1:iii+1]+d),'k--')
+#         plt.plot(gamma[ii],g[ii],'.')
+#         plt.plot(gamma[iii],g[iii],'.')
+#         plt.axvline(x=xs,color='red',linewidth=0.5)
+#         plt.show()
+           
+    else:
+        summ = np.trapz(g[0:ii+1],gamma[0:ii+1],gamma[1]-gamma[0])+np.trapz(g[iii+1:],gamma[iii+1:],gamma[1]-gamma[0])
+#         summ = integrate.simps(g[0:ii+1],gamma[0:ii+1],gamma[1]-gamma[0]) + integrate.simps(g[iii+1:],gamma[iii+1:],gamma[1]-gamma[0])
+#         summ = GaussIntegration(f_int,gamma[0],gamma[ii],50) + GaussIntegration(f_int,gamma[iii+1],gamma[-1],50)
+        a = (f_lin[iii+1]-f_lin[ii])/(gamma[iii+1]-gamma[ii])
+        b = f_lin[ii]-a*gamma[ii]
+        c = ((np.cos(gamma[iii+1])*xe[0]+np.sin(gamma[iii+1])*xe[2])-(np.cos(gamma[ii])*xe[0]+np.sin(gamma[ii])*xe[2]))/(gamma[iii+1]-gamma[ii])
+        d = (np.cos(gamma[ii])*xe[0]+np.sin(gamma[ii])*xe[2]) - c*gamma[ii]
+        rest_ii = (a*(c*gamma[ii]+d)+(b*c-a*d)*np.log(np.abs(c*gamma[ii]+d)))
+        rest_iii = (a*(c*gamma[iii+1]+d)+(b*c-a*d)*np.log(np.abs(c*gamma[iii+1]+d)))
+        rest = (rest_iii-rest_ii)/c**2
+        norm = np.abs(np.trapz(g[0:ii+1],gamma[0:ii+1],gamma[1]-gamma[0]))+np.abs(np.trapz(g[iii+1:],gamma[iii+1:],gamma[1]-gamma[0])) + np.abs(rest)
+        
+#         plt.figure()
+#         plt.subplot(231)
+#         plt.plot(gamma,f_lin)
+#         plt.plot(gamma[ii:iii+2],a*gamma[ii:iii+2]+b,'k--')
+#         plt.axvline(x=xs,color='red',linewidth=0.5)
+#         plt.subplot(232)
+#         plt.plot(gamma,np.cos(gamma)*xe[0]+np.sin(gamma)*xe[2])
+#         plt.plot(gamma[ii:iii+2],c*gamma[ii:iii+2]+d,'k--')
+#         plt.axvline(x=xs,color='red',linewidth=0.5)
+#         plt.subplot(233)
+#         plt.plot(gamma,g)
+#         plt.plot(gamma,np.abs(g))
+#         plt.plot(gamma[ii:iii+2],(a*gamma[ii:iii+2]+b)/(c*gamma[ii:iii+2]+d),'k--')
+#         plt.plot(gamma[ii:iii+2],np.abs((a*gamma[ii:iii+2]+b)/(c*gamma[ii:iii+2]+d)),'--')
+#         plt.plot(gamma[ii],g[ii],'.')
+#         plt.plot(gamma[iii],g[iii],'.')
+#         plt.axvline(x=xs,color='red',linewidth=0.5)
+#         plt.subplot(234)
+#         plt.plot(gamma[ii:iii+2],f_lin[ii:iii+2])
+#         plt.plot(gamma[ii:iii+2],a*gamma[ii:iii+2]+b,'k--')
+#         plt.axvline(x=xs,color='red',linewidth=0.5)
+#         plt.subplot(235)
+#         plt.plot(gamma[ii:iii+2],np.cos(gamma[ii:iii+2])*xe[0]+np.sin(gamma[ii:iii+2])*xe[2])
+#         plt.plot(gamma[ii:iii+2],c*gamma[ii:iii+2]+d,'k--')
+#         plt.axvline(x=xs,color='red',linewidth=0.5)
+#         plt.subplot(236)
+#         plt.plot(gamma[ii:iii+2],g[ii:iii+2])
+#         plt.plot(gamma[ii:iii+2],(a*gamma[ii:iii+2]+b)/(c*gamma[ii:iii+2]+d),'k--')
+#         plt.plot(gamma[ii],g[ii],'.')
+#         plt.plot(gamma[iii],g[iii],'.')
+#         plt.axvline(x=xs,color='red',linewidth=0.5)
+#         plt.show()
+
+    
+    return summ+rest, norm, grad
+
+
 
 def ComputeMomentsOnFlatDetectors(geometry0, geometry1, projection0, projection1):
     a0, a1 = geometry0.GetGantryAngles()[0], geometry1.GetGantryAngles()[0]
